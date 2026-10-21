@@ -39,7 +39,7 @@ wss.on('connection', ws => {
   ws.on('close', () => {
     if (ws.room && rooms.has(ws.room)) {
       rooms.get(ws.room).delete(ws);
-      broadcast(ws.room, { type: 'peer-left', id: ws.id });
+      broadcast(ws.room, { type: 'peer-left', id: ws.seat });
       if (!rooms.get(ws.room).size) rooms.delete(ws.room);
     }
   });
@@ -49,6 +49,7 @@ function broadcast(room, msg, except) {
   for (const peer of rooms.get(room) || []) if (peer !== except && peer.readyState === WebSocket.OPEN) peer.send(data);
 }
 httpServer.listen(port, '0.0.0.0', () => console.log(`Hippie Kaboom listening on http://0.0.0.0:${port} (WebSocket on same port)`));
+
 
 
 

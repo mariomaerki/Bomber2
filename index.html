@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hippie Cat-Bomber – Couch Multiplayer</title>
+<style>
+:root{--bg:#12221a;--panel:#20382b;--text:#fff4d7;--muted:#c1d0bd;--gold:#ffd166}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#2b4a36,#101a14 70%);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+header{text-align:center;padding:14px 12px 6px}h1{font-size:clamp(1.6rem,4vw,2.7rem);margin:0}header p{margin:4px 0;color:var(--muted)}
+main{width:min(1050px,100%);margin:auto;padding:10px;display:grid;grid-template-columns:minmax(0,1fr) 255px;gap:12px}
+.panel{background:#1b3024;border:1px solid #48644c;border-radius:16px;padding:12px;box-shadow:0 12px 30px #0003}
+canvas{display:block;width:100%;height:auto;border-radius:10px;background:#183523}
+.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.keycard{padding:10px;border-radius:12px;background:#294634;font-size:.9rem;line-height:1.55}
+.keycard b{display:block;margin-bottom:3px}.key{display:inline-block;background:#102118;border:1px solid #6c896f;border-radius:5px;padding:0 5px;font-weight:700}
+button{border:0;border-radius:10px;background:var(--gold);color:#263024;font:inherit;font-weight:800;padding:10px 12px;cursor:pointer}button.secondary{background:#2c4937;color:var(--text);border:1px solid #607c60}.row{display:flex;gap:7px;margin:8px 0}.row>*{flex:1}
+h2{font-size:1.05rem;margin:3px 0 8px}p,li{font-size:.9rem;line-height:1.45;color:var(--muted)}.status{color:#d7efc9;font-size:.85rem;min-height:2em}.pill{display:inline-block;padding:4px 8px;margin:2px;background:#2b4936;border-radius:99px;font-size:.8rem}
+@media(max-width:760px){main{grid-template-columns:1fr}.side{order:2}.controls{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header><h1>🌼 Hippie Cat-Bomber 🐈</h1><p>Lokaler Couch-Multiplayer · ein Gerät · eine Tastatur · Flower Power!</p></header>
+<main>
+<section class="panel">
+<canvas id="game" width="728" height="504" aria-label="Spielfeld"></canvas>
+<div class="controls">
+ <div class="keycard"><b>🌻 Spieler 1 — Sunny</b><span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> bewegen<br><span class="key">Leertaste</span> Katzenbombe</div>
+ <div class="keycard"><b>✌️ Spieler 2 — Ziggy</b><span class="key">↑</span> <span class="key">←</span> <span class="key">↓</span> <span class="key">→</span> bewegen<br><span class="key">Enter</span> Katzenbombe</div>
+</div>
+<div class="row"><button id="new">🌈 Neues Spiel</button><button id="pause" class="secondary">⏸ Pause</button></div>
+<div class="status" id="status">Bereit! Drücke „Neues Spiel“.</div>
+<p>Für zwei Spieler auf derselben Tastatur. Keine Internetverbindung, kein Server und keine Installation nötig.</p>
+</section>
+<aside class="panel side">
+<h2>🎮 Spielregeln</h2>
+<ul>
+<li>Beide Hippies treten gleichzeitig gegeneinander an.</li>
+<li>Lege 🐈 Katzenbomben ab. Nach kurzer Zeit explodieren sie kreuzförmig.</li>
+<li>Die Explosion zerstört braune Blumen-Kisten und erwischt Spieler, die im Feuer stehen.</li>
+<li>Sammle 🚲 ein, um dauerhaft schneller zu laufen.</li>
+<li>Der letzte lebende Hippie gewinnt!</li>
+</ul>
+<hr style="border:0;border-top:1px solid #45634b">
+<h2>✨ Power-ups</h2>
+<p><span class="pill">🚲 Fahrrad</span> Extra-Geschwindigkeit</p>
+<p><span class="pill">🌺 Blumen</span> Dekoration und Flower Power</p>
+<p><span class="pill">🐈 Katze</span> Zündschnur mit Überraschung</p>
+<h2>💡 Tipp</h2>
+<p>Bleib nicht neben deiner eigenen Katzenbombe stehen! Nutze die Gänge, um deinen Mitspieler auszutricksen.</p>
+</aside>
+</main>
+<script>
+(()=>{
+const cv=document.getElementById('game'),ctx=cv.getContext('2d'),status=document.getElementById('status');
+const C=13,R=9,T=56,W=C*T,H=R*T;
+let game,paused=true,last=0,keys={};
+const held=new Set();
+const bindings={
+ KeyW:'p1up',KeyA:'p1left',KeyS:'p1down',KeyD:'p1right',Space:'p1bomb',
+ ArrowUp:'p2up',ArrowLeft:'p2left',ArrowDown:'p2down',ArrowRight:'p2right',Enter:'p2bomb'
+};
+function rand(n){return Math.floor(Math.random()*n)}
+function newGame(){
+ const blocks=[];
+ for(let y=0;y<R;y++)for(let x=0;x<C;x++){
+  if(x===0||y===0||x===C-1||y===R-1||(x%2===0&&y%2===0))blocks.push({x,y,hard:true});
+  else if(!((x<3&&y<3)||(x>C-4&&y>R-4))&&Math.random()<.62)blocks.push({x,y,hard:false});
+ }
+ game={blocks,bombs:[],flames:[],items:[],running:true,winner:null,players:[
+ {id:1,name:'Sunny',x:1.5,y:1.5,alive:true,bike:false,bombs:1,color:'#ff8fab',input:{},bombHeld:false},
+ {id:2,name:'Ziggy',x:11.5,y:7.5,alive:true,bike:false,bombs:1,color:'#9bf6ff',input:{},bombHeld:false}
+ ]};
+ // Keep the two starting areas clear.
+ game.blocks=game.blocks.filter(b=>!((b.x<3&&b.y<3)||(b.x>C-4&&b.y>R-4)));
+ paused=false;status.textContent='Los geht’s! Viel Glück, Hippies 🌼';document.getElementById('pause').textContent='⏸ Pause';
+}
+function tile(x,y){return {x:Math.floor(x),y:Math.floor(y)}}
+function blockAt(x,y){return game.blocks.find(b=>b.x===x&&b.y===y)}
+function bombAt(x,y){return game.bombs.find(b=>b.x===x&&b.y===y)}
+function blocked(x,y){const c=tile(x,y);return !!blockAt(c.x,c.y)||!!bombAt(c.x,c.y)}
+function canMove(p,x,y){const r=.22;return !blocked(x-r,y-r)&&!blocked(x+r,y-r)&&!blocked(x-r,y+r)&&!blocked(x+r,y+r)}
+function dropBomb(p){
+ if(!p.alive||p.bombs<=0)return;const c=tile(p.x,p.y);if(bombAt(c.x,c.y))return;
+ game.bombs.push({x:c.x,y:c.y,owner:p.id,fuse:1.65,power:2});p.bombs--;
+}
+function explode(b){
+ const cells=[{x:b.x,y:b.y}],dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+ for(const [dx,dy] of dirs)for(let i=1;i<=b.power;i++){
+  const x=b.x+dx*i,y=b.y+dy*i,block=blockAt(x,y);
+  if(block?.hard)break;
+  cells.push({x,y});
+  if(block&&!block.hard){game.blocks=game.blocks.filter(v=>v!==block);if(Math.random()<.28)game.items.push({x,y,type:Math.random()<.7?'bike':'flower'});break}
+ }
+ game.flames.push({cells,ttl:.62});
+ for(const c of cells){const chained=bombAt(c.x,c.y);if(chained&&chained!==b)chained.fuse=0}
+ for(const p of game.players)if(p.alive&&cells.some(c=>c.x===Math.floor(p.x)&&c.y===Math.floor(p.y)))p.alive=false;
+ const owner=game.players.find(p=>p.id===b.owner);if(owner)owner.bombs=Math.min(2,owner.bombs+1);
+}
+function update(dt){
+ if(paused||!game?.running)return;
+ for(const p of game.players){
+  if(!p.alive)continue;const i=p.input;
+  let dx=(i.right?1:0)-(i.left?1:0),dy=(i.down?1:0)-(i.up?1:0);
+  if(dx&&dy){dx*=.707;dy*=.707}
+  const speed=p.bike?4.1:2.7,nx=p.x+dx*speed*dt,ny=p.y+dy*speed*dt;
+  if(dx&&canMove(p,nx,p.y))p.x=nx;if(dy&&canMove(p,p.x,ny))p.y=ny;
+  if(i.bomb&&!p.bombHeld){dropBomb(p);p.bombHeld=true}if(!i.bomb)p.bombHeld=false;
+  const it=game.items.find(it=>it.x===Math.floor(p.x)&&it.y===Math.floor(p.y));
+  if(it){if(it.type==='bike')p.bike=true;game.items=game.items.filter(v=>v!==it)}
+ }
+ for(const b of [...game.bombs]){b.fuse-=dt;if(b.fuse<=0){game.bombs=game.bombs.filter(v=>v!==b);explode(b)}}
+ game.flames=game.flames.filter(f=>(f.ttl-=dt)>0);
+ const alive=game.players.filter(p=>p.alive);
+ if(alive.length<=1){game.running=false;game.winner=alive[0]?.name||'Niemand';status.textContent=alive.length?'🏆 '+game.winner+' gewinnt! Drücke „Neues Spiel“ für eine Revanche.':'💥 Doppel-K.O.! Niemand gewinnt diese Runde.'}
+}
+function draw(){
+ ctx.clearRect(0,0,W,H);ctx.fillStyle='#1c3829';ctx.fillRect(0,0,W,H);
+ for(let y=0;y<R;y++)for(let x=0;x<C;x++){ctx.fillStyle=(x+y)%2?'#254532':'#294b35';ctx.fillRect(x*T,y*T,T,T);ctx.fillStyle='#ffffff0c';ctx.beginPath();ctx.arc(x*T+12+(x*7%23),y*T+10+(y*5%25),2,0,Math.PI*2);ctx.fill()}
+ for(const b of game?.blocks||[]){const x=b.x*T,y=b.y*T;if(b.hard){ctx.fillStyle='#526b57';ctx.fillRect(x+2,y+2,T-4,T-4);ctx.fillStyle='#788d70';ctx.fillRect(x+7,y+7,T-14,7);ctx.fillStyle='#354b3b';ctx.fillRect(x+7,y+20,T-14,T-26)}else{ctx.fillStyle='#986b45';ctx.fillRect(x+4,y+4,T-8,T-8);ctx.fillStyle='#d2a06c';ctx.fillRect(x+9,y+9,T-18,T-18);ctx.font='23px sans-serif';ctx.textAlign='center';ctx.fillText('🌼',x+T/2,y+T/2+8)}}
+ for(const it of game?.items||[]){ctx.font='30px sans-serif';ctx.textAlign='center';ctx.fillText(it.type==='bike'?'🚲':'🌺',it.x*T+T/2,it.y*T+T/2+10)}
+ for(const b of game?.bombs||[]){ctx.font='40px sans-serif';ctx.textAlign='center';ctx.fillText('🐈',b.x*T+T/2,b.y*T+T/2+10);ctx.fillStyle='#ffe4a6';ctx.beginPath();ctx.arc(b.x*T+T/2,b.y*T+9,3,0,Math.PI*2);ctx.fill()}
+ for(const f of game?.flames||[])for(const c of f.cells){ctx.fillStyle='#ffb703bb';ctx.fillRect(c.x*T+3,c.y*T+3,T-6,T-6);ctx.font='30px sans-serif';ctx.textAlign='center';ctx.fillText('💥',c.x*T+T/2,c.y*T+T/2+10)}
+ for(const p of game?.players||[]){if(!p.alive)continue;const x=p.x*T,y=p.y*T;ctx.fillStyle='#0005';ctx.beginPath();ctx.ellipse(x,y+15,18,7,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(x,y,17,0,Math.PI*2);ctx.fill();ctx.font='27px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(p.id===1?'🧔🏻‍♂️':'🧔🏽‍♂️',x,y+1);ctx.font='15px sans-serif';ctx.fillText('🌼',x,y-17);if(p.bike){ctx.font='15px sans-serif';ctx.fillText('🚲',x+18,y+15)}ctx.font='11px system-ui';ctx.fillStyle='#fff';ctx.fillText(p.name,x,y+30)}
+ if(paused){ctx.fillStyle='#09170fc9';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff4d7';ctx.font='bold 28px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(game?'PAUSE':'Hippie Cat-Bomber',W/2,H/2-8);ctx.font='16px system-ui';ctx.fillText(game?'Drücke „Weiter“':'Klicke auf „Neues Spiel“',W/2,H/2+25)}
+}
+function frame(t){const dt=Math.min((t-last)/1000||0,.04);last=t;update(dt);draw();requestAnimationFrame(frame)}
+function setKey(code,down){const name=bindings[code];if(!name)return;const [player,action]=name.startsWith('p1')?['p1',name.slice(2)]:['p2',name.slice(2)];const p=game?.players.find(v=>v.id===(player==='p1'?1:2));if(!p)return;if(action==='bomb')p.input.bomb=down;else p.input[action]=down}
+window.addEventListener('keydown',e=>{if(bindings[e.code]){e.preventDefault();if(!held.has(e.code)){held.add(e.code);setKey(e.code,true)}}});
+window.addEventListener('keyup',e=>{if(bindings[e.code]){e.preventDefault();held.delete(e.code);setKey(e.code,false)}});
+window.addEventListener('blur',()=>{held.clear();if(game)for(const p of game.players)p.input={}});
+document.getElementById('new').addEventListener('click',newGame);
+document.getElementById('pause').addEventListener('click',()=>{if(!game){newGame();return}paused=!paused;document.getElementById('pause').textContent=paused?'▶ Weiter':'⏸ Pause';status.textContent=paused?'Pause.':'Weiter geht’s!'});
+newGame();paused=true;status.textContent='Bereit! Klicke „Neues Spiel“, um zu starten.';requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

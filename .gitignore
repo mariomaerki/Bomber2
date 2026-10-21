@@ -1,0 +1,7 @@
+# Dependencies and local runtime
+node_modules/
+runtime/
+server.log
+server-error.log
+npm-debug.log*
+.DS_Store
